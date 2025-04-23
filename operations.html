@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firebase Person Operations</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f4f4f4;
+        }
+        .container {
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            width: 80%;
+            max-width: 600px;
+            text-align: center;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .input-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="text"] {
+            width: calc(100% - 16px);
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+            margin-bottom: 10px;
+        }
+        .buttons button {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 4px;
+            color: white;
+            font-size: 1em;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .create-button {
+            background-color: #dada00;
+        }
+        .read-button {
+            background-color: #007bff;
+        }
+        .update-button {
+            background-color: #28a745;
+        }
+        .delete-button {
+            background-color: #dc3545;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #eee;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+            text-align: left;
+            white-space: pre-wrap; /* Preserve formatting */
+        }
+        #error {
+            color: red;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="home">home</a>
+        - <a href="list">list</a> 
+        - <a href="add">add</a> 
+        <h1>Perform Person Operations</h1>
+        <div class="input-group">
+            <label for="personKey">Enter Person Key:</label>
+            <input type="text" id="personKey" placeholder="e.g., -ABC123xyz...">
+        </div>
+        <div class="buttons">
+            <button class="create-button" onclick="createPerson('POST')"   title="POST">Create</button>
+            <button class="read-button"   onclick="performOperation('GET')"    title="GET">Read</button>
+            <button class="update-button" onclick="loadPersonForPerson()"      title="PUT">Update</button>
+            <button class="delete-button" onclick="performOperation('DELETE')" title="DELETE">Delete</button>
+        </div>
+
+        <div id="personForm" style="display: none; margin-top: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 4px; background-color: #f9f9f9; text-align: left;">
+            <h2><span id="person-title-operation">Operation</span> Person</h2>
+            <label for="personName">Name:</label>
+            <input type="text" id="personName"><br><br>
+            <label for="personDob">Date of Birth:</label>
+            <input type="date" id="personDob"><br><br>
+            <label for="personDeceased">Deceased:</label>
+            <input type="checkbox" id="personDeceased"><br><br>
+            <div id="personDeceasedFields" style="display: none;">
+                <label for="personDod">Date of Death:</label>
+                <input type="date" id="personDod"><br><br>
+            </div>
+            <label>Accomplishments:</label>
+            <div id="personAccomplishmentsContainer">
+                </div>
+            <button type="button" onclick="addPersonAccomplishment()">Add Accomplishment</button>
+            <hr>
+            <button type="button" id="submit-create-button" onclick="performOperation('POST')">Submit Create</button>
+            <button type="button" id="submit-update-button" onclick="performOperation('PUT')">Submit Update</button>
+            <button type="button" onclick="hidePersonForm()">Cancel</button>
+        </div>
+
+        <div id="result"></div>
+        <div id="error"></div>
+    </div>
+
+    <script>
+        const resultDiv = document.getElementById('result');
+        const errorDiv = document.getElementById('error');
+        const personKeyInput = document.getElementById('personKey');
+        const personFormDiv = document.getElementById('personForm');
+        const personDeceasedCheckbox = document.getElementById('personDeceased');
+        const personDeceasedFieldsDiv = document.getElementById('personDeceasedFields');
+        const personAccomplishmentsContainer = document.getElementById('personAccomplishmentsContainer');
+
+        personDeceasedCheckbox.addEventListener('change', function() {
+            personDeceasedFieldsDiv.style.display = this.checked ? 'block' : 'none';
+        });
+
+        function populatePersonForm(personData) {
+            document.getElementById('personName').value = personData.name || '';
+            document.getElementById('personDob').value = personData.date_of_birth || '';
+            document.getElementById('personDeceased').checked = personData.deceased || false;
+            document.getElementById('personDod').value = personData.date_of_death || '';
+            personDeceasedFieldsDiv.style.display = personData.deceased ? 'block' : 'none';
+
+            // Clear existing accomplishments
+            personAccomplishmentsContainer.innerHTML = '';
+            if (personData.accomplishments && Array.isArray(personData.accomplishments)) {
+                personData.accomplishments.forEach((acc, index) => {
+                    console.log(index, '. Adding accomplishment:', acc)
+                    addPersonAccomplishment(acc, index);
+                });
+            } else {
+                addPersonAccomplishment(); // Add at least one empty accomplishment
+            }
+            showPersonForm();
+        }
+
+        function createPerson() {
+            document.getElementById('submit-update-button').style.visibility='hidden';
+            document.getElementById('person-title-operation').textContent = 'Create';
+            showPersonForm();
+        }
+        function loadPersonForPerson() {
+            document.getElementById('submit-create-button').style.visibility='hidden';
+            document.getElementById('person-title-operation').textContent = 'Update';
+
+            const key = personKeyInput.value.trim();
+            if (!key) {
+                errorDiv.textContent = 'Please enter a Person Key to person.';
+                resultDiv.textContent = '';
+                return;
+            }
+            errorDiv.textContent = '';
+            resultDiv.textContent = 'Loading person data for person...';
+
+            fetch(`/persons/${key}`)
+                .then(response => {
+                    if (!response.ok) {
+                        return response.text().then(text => { throw new Error(`${response.status}: ${text}`); });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    populatePersonForm(data);
+                    resultDiv.textContent = ''; // Clear loading message
+                })
+                .catch(error => {
+                    errorDiv.textContent = `Error loading person data: ${error.message}`;
+                    resultDiv.textContent = '';
+                    hidePersonForm();
+                });
+        }
+
+        let personAccomplishmentCount = 0;
+        function addPersonAccomplishment(accomplishment = {}, index = personAccomplishmentCount) {
+            console.log(index, '. from inside of function addPersonAccomplishment:', accomplishment)
+            const newAccomplishment = document.createElement('div');
+            newAccomplishment.classList.add('person-accomplishment');
+            newAccomplishment.innerHTML = `
+                <label>Start Date:</label>
+                <input type="date" name="accomplishments[${personAccomplishmentCount}][start_date]" value="${accomplishment.start_date || ''}" required>
+                <label>End Date:</label>
+                <input type="date" name="accomplishments[${personAccomplishmentCount}][end_date]"   value="${accomplishment.end_date || ''}"><br>
+                <label>Description:</label><br>
+                <textarea name="accomplishments[${personAccomplishmentCount}][description]">${accomplishment.description || ''}</textarea><br>
+                <label>Assigned Color:</label>
+                <input type="color" name="accomplishments[${personAccomplishmentCount}][color]" value="${accomplishment.color || '#000000'}"><br>
+                <button type="button" onclick="removePersonAccomplishment(this)">Remove</button>
+            `;
+            personAccomplishmentsContainer.appendChild(newAccomplishment);
+            personAccomplishmentCount = Math.max(personAccomplishmentCount, index + 1);
+        }
+
+        function removePersonAccomplishment(button) {
+            button.parentNode.remove();
+        }
+
+        function showPersonForm() {
+            personFormDiv.style.display = 'block';
+        }
+
+        function hidePersonForm() {
+            document.getElementById('submit-create-button').style.visibility='visible';
+            document.getElementById('submit-update-button').style.visibility='visible';
+            personFormDiv.style.display = 'none';
+        }
+
+        function performOperation(method) {
+            const key = personKeyInput.value.trim();
+//            if (!key && method !== 'GET') { // GET can work without a key (list all)
+            if (!key && method !== 'POST') {
+                errorDiv.textContent = `Please enter a Person Key to ${method.toLowerCase()}.`;
+                resultDiv.textContent = '';
+                return;
+            }
+
+            errorDiv.textContent = '';
+            resultDiv.textContent = 'Loading...';
+
+//            let url = (method === 'GET' && !key) ? '/people' : `/persons/${key}`;
+            let url = (method === 'POST' && !key) ? '/persons/create' : `/persons/${key}`;
+            let options = {
+                method: method,
+                headers: {}
+            };
+
+            if ((method === 'PUT') || (method === 'POST')) {
+                options.headers['Content-Type'] = 'application/json';
+                const personData = {
+                    name: document.getElementById('personName').value,
+                    date_of_birth: document.getElementById('personDob').value,
+                    deceased: document.getElementById('personDeceased').checked,
+                    date_of_death: document.getElementById('personDod').value,
+                    accomplishments: []
+                };
+
+                const accomplishmentDivs = document.querySelectorAll('#personAccomplishmentsContainer .person-accomplishment');
+                accomplishmentDivs.forEach(div => {
+                    personData.accomplishments.push({
+                        start_date: div.querySelector('input[name$="[start_date]"]').value,
+                        end_date: div.querySelector('input[name$="[end_date]"]').value,
+                        description: div.querySelector('textarea[name$="[description]"]').value,
+                        color: div.querySelector('input[name$="[color]"]').value
+                    });
+                });
+
+                options.body = JSON.stringify(personData);
+                console.log("options.method:\n", options.method)
+                console.log("options.body:\n", options.body)
+            }
+
+            fetch(url, options)
+                .then(response => {
+                    if (!response.ok) {
+                        return response.text().then(text => { throw new Error(`${response.status}: ${text}`); });
+                    }
+                    return response.text();
+                })
+                .then(data => {
+                    resultDiv.textContent = data;
+                    if (method === 'GET') {
+                        try {
+                            const person = key ? JSON.parse(data) : JSON.stringify(JSON.parse(data), null, 2);
+                        resultDiv.textContent = typeof person === 'string' ? person : JSON.stringify(person, null, 2);
+                        } catch (e) {
+                            // If not valid JSON, just display as text
+                        }
+                    }
+                    if (method === 'PUT') {
+                        hidePersonForm();
+                    }
+                })
+                .catch(error => {
+                    errorDiv.textContent = `Error: ${error.message}`;
+                    resultDiv.textContent = '';
+                });
+        }
+    </script>
+</body>
+</html>

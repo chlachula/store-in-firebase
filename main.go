@@ -39,13 +39,12 @@ type Accomplishment struct {
 
 var firebaseClient *db.Client
 
-//go:embed  index.html
+//go:embed  form.html
 var formBytes []byte
 
 //go:embed  operations.html
 var operationsBytes []byte
 
-/*
 func homeHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	w.Write([]byte(`
@@ -64,7 +63,6 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 		</html>
 	`))
 }
-*/
 
 func formPageHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("Received method:%s request to url:%s\n", r.Method, r.URL.Path) //
@@ -84,65 +82,74 @@ func submitFormHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-
-	err := r.ParseForm()
-	if err != nil {
-		http.Error(w, "Error parsing form", http.StatusBadRequest)
-		fmt.Printf("Error parsing form: %v\n", err) //
-		log.Printf("Error parsing form: %v", err)
-		return
-	}
-
-	var person Person
-
-	person.Name = r.FormValue("name")
-	person.DateOfBirth = r.FormValue("dob")
-	person.Deceased = r.FormValue("deceased") == "on" // Checkbox value
-
-	if person.Deceased {
-		person.DateOfDeath = r.FormValue("dod")
-	}
-
-	// Handle accomplishments dynamically
-	var accomplishments []Accomplishment
-	for i := 0; ; i++ {
-		startDate := r.FormValue(fmt.Sprintf("accomplishments[%d][start_date]", i))
-		description := r.FormValue(fmt.Sprintf("accomplishments[%d][description]", i))
-
-		if startDate == "" || description == "" {
-			break // No more accomplishments
-		}
-
-		endDate := r.FormValue(fmt.Sprintf("accomplishments[%d][end_date]", i))
-		color := r.FormValue(fmt.Sprintf("accomplishments[%d][color]", i))
-
-		accomplishments = append(accomplishments, Accomplishment{
-			StartDate:   startDate,
-			EndDate:     endDate,
-			Description: description,
-			Color:       color,
-		})
-	}
-	person.Accomplishments = accomplishments
-
-	// Basic server-side validation (you can add more robust validation)
-	if person.Name == "" || person.DateOfBirth == "" {
-		http.Error(w, "Name and Date of Birth are required", http.StatusBadRequest)
-		return
-	}
-	if person.Deceased && person.DateOfDeath == "" {
-		http.Error(w, "Date of Death is required if deceased", http.StatusBadRequest)
-		return
-	}
-
-	for _, acc := range person.Accomplishments {
-		if acc.StartDate == "" || acc.Description == "" {
-			http.Error(w, "Start Date and Description are required for each accomplishment", http.StatusBadRequest)
+	/*
+		err := r.ParseForm()
+		if err != nil {
+			http.Error(w, "Error parsing form", http.StatusBadRequest)
+			fmt.Printf("Error parsing form: %v\n", err) //
+			log.Printf("Error parsing form: %v", err)
 			return
 		}
-		// You could add date format validation here
+	*/
+	var person Person
+	err := json.NewDecoder(r.Body).Decode(&person)
+	if err != nil {
+		http.Error(w, "Error decoding request body", http.StatusBadRequest)
+		log.Printf("Error decoding request body: %v", err)
+		return
 	}
+	/*
+		var person Person
+		person = updatedPerson
 
+		person.Name = r.FormValue("updateName")
+		person.DateOfBirth = r.FormValue("updateDob")
+		person.Deceased = r.FormValue("deceased") == "on" // Checkbox value
+
+		if person.Deceased {
+			person.DateOfDeath = r.FormValue("dod")
+		}
+
+		// Handle accomplishments dynamically
+		var accomplishments []Accomplishment
+		for i := 0; ; i++ {
+			startDate := r.FormValue(fmt.Sprintf("accomplishments[%d][start_date]", i))
+			description := r.FormValue(fmt.Sprintf("accomplishments[%d][description]", i))
+
+			if startDate == "" || description == "" {
+				break // No more accomplishments
+			}
+
+			endDate := r.FormValue(fmt.Sprintf("accomplishments[%d][end_date]", i))
+			color := r.FormValue(fmt.Sprintf("accomplishments[%d][color]", i))
+
+			accomplishments = append(accomplishments, Accomplishment{
+				StartDate:   startDate,
+				EndDate:     endDate,
+				Description: description,
+				Color:       color,
+			})
+		}
+		person.Accomplishments = accomplishments
+
+		// Basic server-side validation (you can add more robust validation)
+		if person.Name == "" || person.DateOfBirth == "" {
+			http.Error(w, "Name and Date of Birth are required", http.StatusBadRequest)
+			return
+		}
+		if person.Deceased && person.DateOfDeath == "" {
+			http.Error(w, "Date of Death is required if deceased", http.StatusBadRequest)
+			return
+		}
+
+		for _, acc := range person.Accomplishments {
+			if acc.StartDate == "" || acc.Description == "" {
+				http.Error(w, "Start Date and Description are required for each accomplishment", http.StatusBadRequest)
+				return
+			}
+			// You could add date format validation here
+		}
+	*/
 	// Store data in Firebase Realtime Database
 	ref := firebaseClient.NewRef("people") // You can choose a different path
 	_, err = ref.Push(r.Context(), person)
@@ -245,6 +252,34 @@ func listPeopleHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func personsHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Printf("personsHandler-Received method:%s request to url:%s\n", r.Method, r.URL.Path) //
+	if r.Method == http.MethodGet {
+		vars := mux.Vars(r)
+		key := vars["key"]
+		if key == "home" {
+			homeHandler(w, r)
+		} else if key == "operations" {
+			operationsPageHandler(w, r)
+		} else if key == "list" {
+			listPeopleHandler(w, r)
+		} else if key == "add" {
+			formPageHandler(w, r)
+		} else {
+			getPersonHandler(w, r)
+		}
+	} else if r.Method == http.MethodPost {
+		submitFormHandler(w, r)
+	} else if r.Method == http.MethodPut {
+		updatePersonHandler(w, r)
+	} else if r.Method == http.MethodDelete {
+		deletePersonHandler(w, r)
+	} else {
+		http.Error(w, "Unexpected method", http.StatusMethodNotAllowed)
+		return
+	}
+}
+
 // login related
 var firebaseAuthClient *auth.Client // Firebase Auth client
 
@@ -318,15 +353,16 @@ func main() {
 
 	// Set up HTTP routes
 	r := mux.NewRouter()
-	//r.HandleFunc("/", homeHandler)
+	r.HandleFunc("/", homeHandler)
 	r.HandleFunc("/operations", operationsPageHandler)
 	r.HandleFunc("/person_add", formPageHandler)
 	r.HandleFunc("/person_list", listPeopleHandler)
+	r.HandleFunc("/persons/{key}", personsHandler).Methods("GET", "PUT", "DELETE", "POST")
 	r.HandleFunc("/person/{key}", getPersonHandler).Methods("GET")
 	r.HandleFunc("/person/{key}", updatePersonHandler).Methods("PUT")    // New route for updating
 	r.HandleFunc("/person/{key}", deletePersonHandler).Methods("DELETE") // New route for deleting
 	r.HandleFunc("/person_submit", submitFormHandler).Methods("POST")
-	r.PathPrefix("/").Handler(http.FileServer(http.Dir("./"))) // Serve static files (index.html)
+	//r.PathPrefix("/").Handler(http.FileServer(http.Dir("./"))) // Serve static files (index.html)
 	r.HandleFunc("/protected", authenticate(protectedHandler)).Methods("GET")
 
 	port := os.Getenv("PORT")
